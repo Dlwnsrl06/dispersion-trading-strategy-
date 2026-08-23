@@ -10,6 +10,16 @@ data, so you notice problems instead of debugging weird backtest
 results three steps downstream.
 """
 
+
+"""
+given a ticker (from yfinance), hand back the four numbers Black-Scholes needs:
+    spot, strike, time to expiry, and a market price.
+
+operate during US market hours.
+"""
+
+
+
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -115,7 +125,6 @@ def get_price_history(tickers, lookback_days):
 
     return data.tail(lookback_days)
 
-
 if __name__ == "__main__":
     # Quick manual check. Requires internet access to Yahoo Finance,
     # which will not work inside a sandboxed environment without
@@ -125,3 +134,14 @@ if __name__ == "__main__":
         config.INDEX_TICKER, config.MIN_DAYS_TO_EXPIRY, config.MAX_DAYS_TO_EXPIRY
     )
     print(index_option)
+
+from datetime import datetime
+symbols = [config.INDEX_TICKER] + config.COMPONENT_TICKERS
+today = datetime.now().date()
+for s in symbols:
+    import yfinance as yf
+    opts = yf.Ticker(s).options
+    hits = [e for e in opts
+            if 25 <= (datetime.strptime(e, "%Y-%m-%d").date() - today).days <= 45]
+    print(f"{s:6s} {hits}")
+
