@@ -3,7 +3,10 @@
 An index-vs-component correlation dispersion strategy. 
 Sells index implied volatility and buys a basket of component
 implied volatility, betting that realized correlation across the basket
-comes in lower than what's implied.
+comes in lower than what's implied. This strategy is based off of the paper: 
+Driessen, J., Maenhout, P. J., & Vilkov, G. (2009). 
+"The Price of Correlation Risk: Evidence from Equity Options." Journal of Finance, 64(3), 1377-1406.
+
 
 ## Structure
 
