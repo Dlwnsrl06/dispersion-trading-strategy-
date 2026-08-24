@@ -37,9 +37,10 @@ def main():
 
     print(f"\nFetching component options for {len(config.COMPONENT_TICKERS)} tickers...")
     component_options = get_basket_options(
-        config.COMPONENT_TICKERS, config.MIN_DAYS_TO_EXPIRY, config.MAX_DAYS_TO_EXPIRY
+        config.COMPONENT_TICKERS, config.MIN_DAYS_TO_EXPIRY, config.MAX_DAYS_TO_EXPIRY,
+        target_expiry=index_option["expiry"],
     )
-
+    
     component_ivs = {}
     for ticker, option_data in component_options.items():
         iv = implied_volatility(
@@ -81,6 +82,11 @@ def main():
         "A positive spread is the condition the dispersion trade is designed "
         "to monetize: sell index vol, buy the component basket."
     )
+
+    # print(f"  weight sum (pre-norm): {total:.4f} over {len(raw)} names")
+    # print(f"  weighted_var_sum: {implied_result['weighted_var_sum']:.6f}")
+    # print(f"  weighted_sum_sq:  {implied_result['weighted_sum_sq']:.6f}")
+    # print(f"  index_iv^2:       {index_iv ** 2:.6f}")
 
 
 if __name__ == "__main__":

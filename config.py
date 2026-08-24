@@ -16,27 +16,56 @@ INDEX_TICKER = "SPY"
 # names) isn't practical for a student project, so this uses the top
 # names by weight, which is the same simplification real dispersion
 # desks make when full replication is too costly or illiquid.
-COMPONENT_TICKERS = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL",
-    "META", "BRK-B", "AVGO", "LLY", "JPM",
-]
+# COMPONENT_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL",
+#     "META", "BRK-B", "AVGO", "LLY", "JPM",
+# ]
 
-# Approximate index weights for the tickers above (as of when this was
-# written). These will drift over time, refresh them periodically from
-# a live source (e.g. State Street's SPY holdings page) rather than
-# trusting these numbers indefinitely.
-COMPONENT_WEIGHTS = {
-    "AAPL": 0.070,
-    "MSFT": 0.065,
-    "NVDA": 0.060,
-    "AMZN": 0.038,
-    "GOOGL": 0.020,
-    "META": 0.024,
-    "BRK-B": 0.017,
-    "AVGO": 0.024,
-    "LLY": 0.014,
-    "JPM": 0.013,
-}
+# # Approximate index weights for the tickers above (as of when this was
+# # written). These will drift over time, refresh them periodically from
+# # a live source (e.g. State Street's SPY holdings page) rather than
+# # trusting these numbers indefinitely.
+# COMPONENT_WEIGHTS = {
+#     "AAPL": 0.070,
+#     "MSFT": 0.065,
+#     "NVDA": 0.060,
+#     "AMZN": 0.038,
+#     "GOOGL": 0.020,
+#     "META": 0.024,
+#     "BRK-B": 0.017,
+#     "AVGO": 0.024,
+#     "LLY": 0.014,
+#     "JPM": 0.013,
+# }
+
+
+import csv
+import os
+
+_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "spy_weights.csv")
+
+if not os.path.exists(_WEIGHTS_PATH):
+    raise FileNotFoundError(
+        "spy_weights.csv not found. Generate it first:\n"
+        "  python build_weights.py <ssga_holdings_file.xlsx> --top 50\n"
+        "Hardcoded weights go stale silently and produce wrong correlations."
+    )
+
+COMPONENT_WEIGHTS = {}
+with open(_WEIGHTS_PATH) as f:
+    for row in csv.DictReader(f):
+        COMPONENT_WEIGHTS[row["ticker"]] = float(row["weight"])
+
+COMPONENT_TICKERS = list(COMPONENT_WEIGHTS.keys())
+
+# Coverage: the fraction of the index this basket spans. The single-correlation
+# identity needs this reasonably high — at 34.5% (the original 10 names) it
+# broke down and produced rho = 1.25.
+BASKET_COVERAGE = sum(COMPONENT_WEIGHTS.values())
+
+
+
+
 
 # Risk-free rate used in Black-Scholes. Treated as constant for
 # simplicity. A more careful version would pull a matching-maturity

@@ -34,6 +34,11 @@ python main.py
 Requires outbound internet access to Yahoo Finance. `main.py` fetches
 live data, it does not include historical options data, see below.
 
+Requires to update the config.py's ticker information:
+1. update the list of tickers
+2. update the list of weights for tickers in spy_weights.csv
+
+
 ## What this gives you, and what it doesn't
 
 Running `main.py` gets you one live data point: today's implied

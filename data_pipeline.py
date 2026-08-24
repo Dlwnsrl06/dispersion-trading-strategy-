@@ -18,13 +18,14 @@ given a ticker (from yfinance), hand back the four numbers Black-Scholes needs:
 operate during US market hours.
 """
 
-
+#this is the original data_pipelin.py file using yfinacne api
 
 from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import time
 
 import config
 
@@ -43,7 +44,7 @@ def get_expiry_in_range(ticker_obj, min_days, max_days):
     return None, None
 
 
-def get_atm_option(ticker_symbol, min_days, max_days, option_type="call"):
+def get_atm_option(ticker_symbol, min_days, max_days, option_type="call", target_expiry=None):
     """
     Fetches the near-the-money option for a single ticker at a matching
     expiry. Returns a dict with the fields needed for IV extraction, or
@@ -56,11 +57,18 @@ def get_atm_option(ticker_symbol, min_days, max_days, option_type="call"):
         raise ValueError(f"No spot price data for {ticker_symbol}")
     spot = spot_history["Close"].iloc[-1]
 
-    expiry_str, days_out = get_expiry_in_range(ticker_obj, min_days, max_days)
-    if expiry_str is None:
-        raise ValueError(
-            f"No expiry between {min_days} and {max_days} days found for {ticker_symbol}"
-        )
+    if target_expiry is not None:
+        if target_expiry not in ticker_obj.options:
+            raise ValueError(f"{ticker_symbol} has no contract expiring {target_expiry}")
+        expiry_str = target_expiry
+        days_out = (datetime.strptime(expiry_str, "%Y-%m-%d").date()
+                    - datetime.now().date()).days
+    else:
+        expiry_str, days_out = get_expiry_in_range(ticker_obj, min_days, max_days)
+        if expiry_str is None:
+            raise ValueError(
+                f"No expiry between {min_days} and {max_days} days found for {ticker_symbol}"
+            )
 
     chain = ticker_obj.option_chain(expiry_str)
     options_df = chain.calls if option_type == "call" else chain.puts
@@ -68,14 +76,12 @@ def get_atm_option(ticker_symbol, min_days, max_days, option_type="call"):
     if options_df.empty:
         raise ValueError(f"Empty {option_type} chain for {ticker_symbol} at {expiry_str}")
 
-    # Find the strike closest to spot (ATM).
     options_df = options_df.copy()
     options_df["strike_diff"] = (options_df["strike"] - spot).abs()
     atm_row = options_df.sort_values("strike_diff").iloc[0]
 
     mid_price = (atm_row["bid"] + atm_row["ask"]) / 2
     if mid_price <= 0 or atm_row["bid"] <= 0:
-        # A zero or crossed bid usually means a stale or illiquid quote.
         raise ValueError(
             f"Bad quote for {ticker_symbol}: bid={atm_row['bid']}, ask={atm_row['ask']}"
         )
@@ -92,22 +98,22 @@ def get_atm_option(ticker_symbol, min_days, max_days, option_type="call"):
         "ask": atm_row["ask"],
     }
 
-
-def get_basket_options(tickers, min_days, max_days, option_type="call"):
+def get_basket_options(tickers, min_days, max_days, option_type="call", target_expiry=None):
     """
     Fetches ATM options for a list of tickers. Skips (with a printed
     warning) any ticker that fails, rather than crashing the whole
-    pipeline over one bad quote. Check the printed warnings, don't
-    ignore them.
+    pipeline over one bad quote.
     """
     results = {}
     for ticker in tickers:
         try:
-            results[ticker] = get_atm_option(ticker, min_days, max_days, option_type)
+            results[ticker] = get_atm_option(
+                ticker, min_days, max_days, option_type, target_expiry=target_expiry
+            )
         except ValueError as e:
             print(f"Warning: skipping {ticker}: {e}")
+        time.sleep(0.3)
     return results
-
 
 def get_price_history(tickers, lookback_days):
     """
