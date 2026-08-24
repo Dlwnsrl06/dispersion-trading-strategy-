@@ -1,7 +1,7 @@
 # Dispersion Trading Pipeline
 
-A starting scaffold for an index-vs-component correlation dispersion
-strategy. Sells index implied volatility and buys a basket of component
+An index-vs-component correlation dispersion strategy. 
+Sells index implied volatility and buys a basket of component
 implied volatility, betting that realized correlation across the basket
 comes in lower than what's implied.
 
