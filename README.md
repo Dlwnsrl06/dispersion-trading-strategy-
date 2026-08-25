@@ -51,7 +51,7 @@ chain data, not just the live snapshot yfinance provides by default.
 This is the first real design decision to make as a team: find a
 historical options data source (several exist, most free ones are
 limited in depth or history) and adapt `data_pipeline.py` to pull from
-it.
+it. -> waiting for WRDS access
 
 ## Known simplifications, and where to go deeper
 
