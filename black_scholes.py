@@ -95,7 +95,7 @@ def implied_volatility(
         if sigma <= 0 or sigma > 5:
             break  # stepped somewhere nonsensical, bail to bisection
 
-    # Bisection fallback over a wide but plausible vol range.
+    # Bisection just in case Newton-Raphson fails
     lo, hi = 1e-4, 5.0
     price_lo = bs_price(S, K, T, r, lo, option_type) - market_price
     price_hi = bs_price(S, K, T, r, hi, option_type) - market_price
