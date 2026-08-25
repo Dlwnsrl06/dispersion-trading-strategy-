@@ -58,6 +58,8 @@ def main():
 
     # Only keep weights for tickers that actually produced a valid IV.
     active_weights = {t: config.COMPONENT_WEIGHTS[t] for t in component_ivs}
+    total_weight = sum(active_weights.values()) 
+    active_weights = {t: w / total_weight for t, w in active_weights.items()} #renormalizing the weights to sum to 1.0
 
     print("\nSolving for implied correlation...")
     implied_result = implied_correlation(index_iv, component_ivs, active_weights)

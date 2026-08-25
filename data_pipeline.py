@@ -78,13 +78,34 @@ def get_atm_option(ticker_symbol, min_days, max_days, option_type="call", target
 
     options_df = options_df.copy()
     options_df["strike_diff"] = (options_df["strike"] - spot).abs()
-    atm_row = options_df.sort_values("strike_diff").iloc[0]
+    candidates = options_df.sort_values("strike_diff")
 
-    mid_price = (atm_row["bid"] + atm_row["ask"]) / 2
-    if mid_price <= 0 or atm_row["bid"] <= 0:
+    atm_row = None
+    used_last_price = False
+    for _, row in candidates.iterrows():
+        if row["bid"] > 0 and row["ask"] > 0 and row["ask"] >= row["bid"]:
+            atm_row = row
+            break
+
+    if atm_row is None:
+        for _, row in candidates.iterrows():
+            if row.get("lastPrice", 0) > 0:
+                atm_row = row
+                used_last_price = True
+                break
+
+    if atm_row is None:
         raise ValueError(
-            f"Bad quote for {ticker_symbol}: bid={atm_row['bid']}, ask={atm_row['ask']}"
+            f"No usable quote found for {ticker_symbol} at {expiry_str}, "
+            f"checked {len(candidates)} strikes, all had zero, missing "
+            f"or crossed bid/ask."
         )
+
+    if used_last_price:
+        mid_price = atm_row["lastPrice"]
+    else:
+        mid_price = (atm_row["bid"] + atm_row["ask"]) / 2
+
 
     return {
         "ticker": ticker_symbol,
@@ -141,13 +162,13 @@ if __name__ == "__main__":
     )
     print(index_option)
 
-from datetime import datetime
-symbols = [config.INDEX_TICKER] + config.COMPONENT_TICKERS
-today = datetime.now().date()
-for s in symbols:
-    import yfinance as yf
-    opts = yf.Ticker(s).options
-    hits = [e for e in opts
-            if 25 <= (datetime.strptime(e, "%Y-%m-%d").date() - today).days <= 45]
-    print(f"{s:6s} {hits}")
+    from datetime import datetime
+    symbols = [config.INDEX_TICKER] + config.COMPONENT_TICKERS
+    today = datetime.now().date()
+    for s in symbols:
+        import yfinance as yf
+        opts = yf.Ticker(s).options
+        hits = [e for e in opts
+                if 25 <= (datetime.strptime(e, "%Y-%m-%d").date() - today).days <= 45]
+        print(f"{s:6s} {hits}")
 
