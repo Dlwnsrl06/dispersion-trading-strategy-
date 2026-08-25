@@ -58,8 +58,7 @@ it. -> waiting for WRDS access
 - **Single average correlation assumption.** The math assumes one
   correlation number applies uniformly across every pair of components.
   This is standard practice in dispersion trading and in index
-  providers' own implied correlation indices, but it's a real
-  simplification worth being able to defend, not an oversight.
+  providers' own implied correlation indices.
 - **ATM options only.** Real dispersion desks think about the whole
   skew, not just one strike. Extending to a skew-aware version (e.g.
   variance swap replication using a strip of strikes) is a legitimate
