@@ -1,10 +1,22 @@
 """
 Configuration for the dispersion trading pipeline.
 
-Edit INDEX_TICKER, COMPONENT_TICKERS, and COMPONENT_WEIGHTS to change
-the basket. Weights should roughly reflect each component's index weight
-and don't need to sum to exactly 1.0, but should be reasonably close.
+Component tickers and weights are loaded from spy_weights.csv, which is
+generated automatically by fetch_spy_weights.py (called from main.py on
+a staleness check, see refresh_weights_if_stale). You shouldn't need to
+run anything manually in normal use.
 """
+
+import csv
+import os
+
+# Number of top-weighted SPY constituents to include in the basket.
+# This is the single source of truth for basket size, referenced both
+# by main.py's auto-refresh call and by any manual
+# `python fetch_spy_weights.py --top ...` runs, so a manual override on
+# the command line can't silently drift out of sync with what the
+# auto-refresh rebuilds later.
+NUM_COMPONENTS = 150
 
 # The index whose options you're comparing against the basket.
 # SPY is used instead of SPX because SPX options are cash-settled index
@@ -12,43 +24,14 @@ and don't need to sum to exactly 1.0, but should be reasonably close.
 # easily accessible proxy.
 INDEX_TICKER = "SPY"
 
-# A subset of the index's largest constituents. Full replication (500
-# names) isn't practical for a student project, so this uses the top
-# names by weight, which is the same simplification real dispersion
-# desks make when full replication is too costly or illiquid.
-# COMPONENT_TICKERS = [
-#     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL",
-#     "META", "BRK-B", "AVGO", "LLY", "JPM",
-# ]
-
-# # Approximate index weights for the tickers above (as of when this was
-# # written). These will drift over time, refresh them periodically from
-# # a live source (e.g. State Street's SPY holdings page) rather than
-# # trusting these numbers indefinitely.
-# COMPONENT_WEIGHTS = {
-#     "AAPL": 0.070,
-#     "MSFT": 0.065,
-#     "NVDA": 0.060,
-#     "AMZN": 0.038,
-#     "GOOGL": 0.020,
-#     "META": 0.024,
-#     "BRK-B": 0.017,
-#     "AVGO": 0.024,
-#     "LLY": 0.014,
-#     "JPM": 0.013,
-# }
-
-
-import csv
-import os
-
-_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "spy_weights.csv")
+_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__),"data", "spy_weights.csv")
 
 if not os.path.exists(_WEIGHTS_PATH):
     raise FileNotFoundError(
-        "spy_weights.csv not found. Generate it first:\n"
-        "  python build_weights.py <ssga_holdings_file.xlsx> --top 50\n"
-        "Hardcoded weights go stale silently and produce wrong correlations."
+        "spy_weights.csv not found. This should be created automatically "
+        "by main.py on first run via fetch_spy_weights.refresh_weights_if_stale(). "
+        "If you're importing config.py directly without having run main.py "
+        "first, run `python fetch_spy_weights.py --top 150` manually first."
     )
 
 COMPONENT_WEIGHTS = {}
@@ -60,12 +43,10 @@ COMPONENT_TICKERS = list(COMPONENT_WEIGHTS.keys())
 
 # Coverage: the fraction of the index this basket spans. The single-correlation
 # identity needs this reasonably high — at 34.5% (the original 10 names) it
-# broke down and produced rho = 1.25.
+# broke down and produced rho = 1.25. Renormalization in main.py handles the
+# math correctness regardless, but higher coverage means the renormalized
+# basket is a closer proxy for the real, full index.
 BASKET_COVERAGE = sum(COMPONENT_WEIGHTS.values())
-
-
-
-
 
 # Risk-free rate used in Black-Scholes. Treated as constant for
 # simplicity. A more careful version would pull a matching-maturity

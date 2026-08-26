@@ -43,7 +43,7 @@ HEADERS = {
     )
 }
 
-WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "spy_weights.csv")
+WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "data", "spy_weights.csv")
 
 
 def fetch_holdings_dataframe():
@@ -59,9 +59,19 @@ def fetch_holdings_dataframe():
     with open(raw_path, "wb") as f:
         f.write(response.content)
 
+    # Dump a raw, unprocessed CSV of the whole sheet, no header
+    # assumption, no filtering. This is purely for you to open and
+    # visually inspect in a normal text editor, since xlsx files show
+    # up as binary garbage in VS Code. Use this to confirm the real
+    # header row number if the skiprows value below ever needs updating.
+    debug_csv_path = os.path.join(os.path.dirname(__file__), "spy_holdings_raw_debug.csv")
+    pd.read_excel(raw_path, header=None).to_csv(debug_csv_path, index=False, header=False)
+    print(f"Saved a readable debug copy to {debug_csv_path}, open that to inspect the raw layout.")
+
     # SSGA's file typically has a few rows of fund metadata before the
     # real header row. Adjust skiprows if the columns below don't show
-    # up, print df.head(10) with skiprows=0 to see the raw layout.
+    # up, check spy_holdings_raw_debug.csv above to find the real
+    # header row number.
     df = pd.read_excel(raw_path, skiprows=4)
 
     # Column names in SSGA's file are typically "Name", "Ticker",
@@ -78,6 +88,13 @@ def fetch_holdings_dataframe():
         )
 
     df = df[["ticker", "weight"]].dropna()
+
+    # SSGA writes share-class tickers with a period (e.g. "BRK.B"), but
+    # yfinance and most other free data sources expect a hyphen instead
+    # (e.g. "BRK-B"). Without this, any share-class ticker silently fails
+    # to fetch later and just gets dropped, no crash, just a quietly
+    # missing component every run.
+    df["ticker"] = df["ticker"].astype(str).str.replace(".", "-", regex=False)
 
     # Weight is usually already a percentage number (e.g. 7.02 meaning
     # 7.02%), convert to decimal to match what config.py/correlation.py

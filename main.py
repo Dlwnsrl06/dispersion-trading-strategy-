@@ -15,7 +15,15 @@ Run this locally, it needs outbound internet access to Yahoo Finance,
 which will not work in a sandboxed environment without it.
 """
 
+from fetch_spy_weights import refresh_weights_if_stale
 import config
+
+# Rebuilds spy_weights.csv automatically if it's more than 20 hours old,
+# using config.NUM_COMPONENTS so this stays in sync with any manual
+# `python fetch_spy_weights.py --top ...` runs rather than silently
+# falling back to a different default basket size.
+refresh_weights_if_stale(max_age_hours=20, top_n=config.NUM_COMPONENTS)
+
 from black_scholes import implied_volatility
 from data_pipeline import get_basket_options, get_atm_option, get_price_history
 from correlation import implied_correlation, realized_correlation
@@ -40,7 +48,7 @@ def main():
         config.COMPONENT_TICKERS, config.MIN_DAYS_TO_EXPIRY, config.MAX_DAYS_TO_EXPIRY,
         target_expiry=index_option["expiry"],
     )
-    
+
     component_ivs = {}
     for ticker, option_data in component_options.items():
         iv = implied_volatility(
@@ -56,10 +64,18 @@ def main():
         else:
             print(f"  {ticker}: IV solver failed, dropping from basket")
 
-    # Only keep weights for tickers that actually produced a valid IV.
+    # Only keep weights for tickers that actually produced a valid IV,
+    # then renormalize so they sum to 1 (see config.py's BASKET_COVERAGE
+    # comment for why this matters).
     active_weights = {t: config.COMPONENT_WEIGHTS[t] for t in component_ivs}
-    total_weight = sum(active_weights.values()) 
-    active_weights = {t: w / total_weight for t, w in active_weights.items()} #renormalizing the weights to sum to 1.0
+    total_weight = sum(active_weights.values())
+    print(
+        f"\nBasket coverage: {config.BASKET_COVERAGE:.1%} of index weight "
+        f"across all {len(config.COMPONENT_TICKERS)} configured tickers, "
+        f"{total_weight:.1%} after dropping tickers with failed IV solves. "
+        f"Renormalizing to 100%."
+    )
+    active_weights = {t: w / total_weight for t, w in active_weights.items()}
 
     print("\nSolving for implied correlation...")
     implied_result = implied_correlation(index_iv, component_ivs, active_weights)
@@ -84,11 +100,6 @@ def main():
         "A positive spread is the condition the dispersion trade is designed "
         "to monetize: sell index vol, buy the component basket."
     )
-
-    # print(f"  weight sum (pre-norm): {total:.4f} over {len(raw)} names")
-    # print(f"  weighted_var_sum: {implied_result['weighted_var_sum']:.6f}")
-    # print(f"  weighted_sum_sq:  {implied_result['weighted_sum_sq']:.6f}")
-    # print(f"  index_iv^2:       {index_iv ** 2:.6f}")
 
 
 if __name__ == "__main__":
