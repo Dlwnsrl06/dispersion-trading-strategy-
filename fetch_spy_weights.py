@@ -55,7 +55,7 @@ def fetch_holdings_dataframe():
     response = requests.get(SSGA_SPY_HOLDINGS_URL, headers=HEADERS, timeout=30)
     response.raise_for_status()
 
-    raw_path = "/tmp/spy_holdings_raw.xlsx"
+    raw_path = os.path.join(os.path.dirname(__file__), "spy_holdings_raw.xlsx")
     with open(raw_path, "wb") as f:
         f.write(response.content)
 
