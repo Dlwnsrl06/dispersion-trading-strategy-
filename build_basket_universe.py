@@ -56,8 +56,25 @@ if __name__ == "__main__":
     superset_tickers = get_superset_tickers(top150_by_qtr)
 
     print(f"Total unique tickers across all quarters: {len(superset_tickers)}")
-    print(superset_tickers)
 
     pd.Series(superset_tickers, name="ticker").to_csv(
         "superset_tickers.csv", index=False
     )
+
+    # --- new check below ---
+    candidates = [
+        'APP', 'BNY', 'BRK-B', 'CMI', 'DDOG', 'DELL', 'GLW', 'HOOD',
+        'MRSH', 'MRVL', 'PWR', 'SNDK', 'STX', 'VRT', 'WDC'
+    ]
+    candidates_normalized = [t.replace('-', '') for t in candidates]
+
+    for original, normalized in zip(candidates, candidates_normalized):
+        matches = top150_by_qtr[top150_by_qtr["Ticker"] == normalized]
+        if matches.empty:
+            matches = top150_by_qtr[top150_by_qtr["Ticker"] == original]
+
+        if matches.empty:
+            print(f"{original:8s} -> NOT in top150 at any point 2015-2025 (skip)")
+        else:
+            quarters = sorted(matches["quarter"].astype(str).unique())
+            print(f"{original:8s} -> IN top150 during: {quarters}")
