@@ -10,6 +10,7 @@ Driessen, J., Maenhout, P. J., & Vilkov, G. (2009).
 
 ## Structure
 
+- `data`: Folder of component stocks and their weights
 - `config.py`: index/basket tickers, weights, and strategy parameters
 - `black_scholes.py`: Black-Scholes pricer and Newton-Raphson (with
   bisection fallback) implied volatility solver
