@@ -19,6 +19,7 @@ Driessen, J., Maenhout, P. J., & Vilkov, G. (2009).
 - `correlation.py`: solves for implied correlation from index and
   component IVs, and computes the matching realized correlation from
   historical returns
+  `build_basket_universe.py`: Outputs cumulative list of components that were the top 150 weights of SPY from 2015-2025
 - `signal.py`: z-scores the implied-minus-realized correlation spread
   and generates a binary in/out position signal
 - `backtest.py`: a simplified variance-notional P&L approximation, see
