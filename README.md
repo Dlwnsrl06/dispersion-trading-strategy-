@@ -25,7 +25,7 @@ Driessen, J., Maenhout, P. J., & Vilkov, G. (2009).
 - `backtest.py`: a simplified variance-notional P&L approximation, see
   the module docstring for what this does and does not capture
 - `main.py`: runs the full pipeline for a single live snapshot
--  `historical_data_pipeline`: Creates straddle dataset 
+-  `historical_data_pipeline`: Creates cleaned straddle dataset 
 
 ## Setup
 
