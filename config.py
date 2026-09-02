@@ -37,7 +37,10 @@ if not os.path.exists(_WEIGHTS_PATH):
 COMPONENT_WEIGHTS = {}
 with open(_WEIGHTS_PATH) as f:
     for row in csv.DictReader(f):
-        COMPONENT_WEIGHTS[row["ticker"]] = float(row["weight"])
+        ticker = row["ticker"].strip()
+        if not ticker or not any(c.isalpha() for c in ticker):
+            continue  # skip malformed rows (e.g. a stray "-" from a bad parse upstream)
+        COMPONENT_WEIGHTS[ticker] = float(row["weight"])
 
 COMPONENT_TICKERS = list(COMPONENT_WEIGHTS.keys())
 

@@ -26,6 +26,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import time
+import contextlib
+import io
 
 import config
 
@@ -123,32 +125,44 @@ def get_basket_options(tickers, min_days, max_days, option_type="call", target_e
     """
     Fetches ATM options for a list of tickers. Skips (with a printed
     warning) any ticker that fails, rather than crashing the whole
-    pipeline over one bad quote.
+    pipeline over one bad quote. Suppresses low-level stderr noise from
+    the underlying HTTP library (e.g. transient curl errors), which
+    yfinance internally retries past and doesn't affect the result.
     """
     results = {}
     for ticker in tickers:
         try:
-            results[ticker] = get_atm_option(
-                ticker, min_days, max_days, option_type, target_expiry=target_expiry
-            )
+            with contextlib.redirect_stderr(io.StringIO()):
+                results[ticker] = get_atm_option(
+                    ticker, min_days, max_days, option_type, target_expiry=target_expiry
+                )
         except ValueError as e:
             print(f"Warning: skipping {ticker}: {e}")
         time.sleep(0.3)
     return results
 
 def get_price_history(tickers, lookback_days):
-    """
-    Fetches daily close prices for realized volatility and correlation
-    calculations. Pulls extra calendar days to comfortably cover the
-    requested number of trading days after weekends/holidays.
-    """
     calendar_days = int(lookback_days * 1.6) + 10
     start = (datetime.now() - timedelta(days=calendar_days)).strftime("%Y-%m-%d")
 
-    data = yf.download(tickers, start=start, progress=False)["Close"]
+    data = yf.download(tickers, start=start, progress=False, threads=False)["Close"]
 
     if isinstance(data, pd.Series):
         data = data.to_frame(name=tickers if isinstance(tickers, str) else tickers[0])
+
+    failed_tickers = [t for t in data.columns if data[t].isna().all()]
+
+    if failed_tickers:
+        print(f"  Retrying {len(failed_tickers)} tickers individually: {failed_tickers}")
+        for ticker in failed_tickers:
+            try:
+                retry_data = yf.download(ticker, start=start, progress=False)["Close"]
+                data[ticker] = retry_data
+                time.sleep(0.3)
+            except Exception as e:
+                print(f"    Still failed for {ticker}: {e}")
+
+    data = data.ffill().bfill()
 
     return data.tail(lookback_days)
 

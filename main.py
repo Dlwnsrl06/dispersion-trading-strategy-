@@ -45,10 +45,9 @@ def main():
 
     print(f"\nFetching component options for {len(config.COMPONENT_TICKERS)} tickers...")
     component_options = get_basket_options(
-        config.COMPONENT_TICKERS, config.MIN_DAYS_TO_EXPIRY, config.MAX_DAYS_TO_EXPIRY,
-        target_expiry=index_option["expiry"],
+    config.COMPONENT_TICKERS, config.MIN_DAYS_TO_EXPIRY, config.MAX_DAYS_TO_EXPIRY,
     )
-
+    
     component_ivs = {}
     for ticker, option_data in component_options.items():
         iv = implied_volatility(
@@ -87,7 +86,7 @@ def main():
             "check the expiry alignment and bid-ask quality before trusting this number."
         )
 
-    print("\nFetching price history for realized correlation...")
+    print(f"\nFetching price history for realized correlation...")
     price_history = get_price_history(
         list(active_weights.keys()), config.REALIZED_LOOKBACK_DAYS
     )
