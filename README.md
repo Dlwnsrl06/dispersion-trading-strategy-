@@ -1,91 +1,175 @@
 # Dispersion Trading Pipeline
 
-An index-vs-component correlation dispersion strategy. 
-Sells index implied volatility and buys a basket of component
-implied volatility, betting that realized correlation across the basket
-comes in lower than what's implied. This strategy is based off of the paper: 
-Driessen, J., Maenhout, P. J., & Vilkov, G. (2009). 
-"The Price of Correlation Risk: Evidence from Equity Options." Journal of Finance, 64(3), 1377-1406.
+An index-vs-component correlation dispersion strategy: sell index implied
+volatility, buy a weighted basket of component implied volatility, betting that
+realized correlation across the basket comes in lower than what index options
+price in.
 
+Based on Driessen, J., Maenhout, P. J., & Vilkov, G. (2009), "The Price of
+Correlation Risk: Evidence from Equity Options." *Journal of Finance*, 64(3),
+1377–1406.
 
-## Structure
+## The core idea
 
-- `data`: Folder of component stocks and their weights
-- `config.py`: index/basket tickers, weights, and strategy parameters
-- `black_scholes.py`: Black-Scholes pricer and Newton-Raphson (with
-  bisection fallback) implied volatility solver
-- `data_pipeline.py`: fetches index and component options chains and
-  price history via yfinance
-- `correlation.py`: solves for implied correlation from index and
-  component IVs, and computes the matching realized correlation from
-  historical returns
-- `build_basket_universe.py`: Outputs cumulative list of components that were the top 150 weights of SPY from 2015-2025
-- `signal.py`: z-scores the implied-minus-realized correlation spread
-  and generates a binary in/out position signal
-- `backtest.py`: a simplified variance-notional P&L approximation, see
-  the module docstring for what this does and does not capture
-- `main.py`: runs the full pipeline for a single live snapshot
--  `historical_data_pipeline`: Creates cleaned straddle dataset 
+Index variance is not just the weighted sum of component variances — it depends
+on how the components co-move:
+
+```
+Var(index) = Σ wᵢ² σᵢ²  +  ρ · [ (Σ wᵢ σᵢ)² − Σ wᵢ² σᵢ² ]
+```
+
+Given an observed index IV and observed component IVs, everything in that
+identity is known except `ρ`, so it can be solved for directly. That number is
+the **implied correlation**: the average pairwise correlation the options market
+is pricing in. The same identity applied to realized returns gives **realized
+correlation**.
+
+The trade monetizes the gap. Implied correlation has historically sat above
+realized, which is the risk premium Driessen et al. document.
+
+Assuming a single `ρ` across every pair is a simplification, but a necessary
+one — solving for every pairwise correlation from one index IV and N component
+IVs is badly underdetermined. Index providers' own implied-correlation indices
+make the same assumption.
+
+## Repo layout
+
+The code splits into two tracks that **do not yet meet in the middle**. Knowing
+which track a file belongs to is the fastest way to orient yourself.
+
+### Shared math (used by both tracks)
+
+| File | What it does |
+|---|---|
+| `black_scholes.py` | European option pricer, plus a Newton-Raphson IV solver with bisection fallback. BS is used purely as a quoting convention to turn prices into comparable vol numbers — nothing downstream assumes BS dynamics. |
+| `correlation.py` | `implied_correlation()` solves the identity above for ρ. `realized_correlation()` computes the same quantity from historical returns. Has a self-test under `__main__` that recovers a known ρ from synthetic factor-model returns. |
+| `config.py` | Basket size, index ticker, expiry window, lookback windows, signal thresholds. Loads component weights from `data/spy_weights.csv` at import time. |
+
+### Track A — live snapshot (working)
+
+| File | What it does |
+|---|---|
+| `fetch_spy_weights.py` | Downloads SPY's daily holdings file straight from State Street and rebuilds `data/spy_weights.csv`. Handles the `.`→`-` ticker convention (BRK.B → BRK-B) that yfinance needs. `refresh_weights_if_stale()` makes this self-maintaining. |
+| `data_pipeline.py` | Pulls live option chains and price history from yfinance. Finds the near-ATM contract at a matching expiry per ticker. |
+| `main.py` | Runs the whole live path end to end and prints today's implied correlation, realized correlation, and the spread. |
+
+Track A produces **one data point** — today's. That's enough to prove the math
+and plumbing work, and nothing more.
+
+### Track B — historical (partially built)
+
+| File | What it does |
+|---|---|
+| `build_basket_universe.py` | Reads a CRSP daily constituents export, ranks by `DlyCap` on the last trading day of each quarter, keeps the top 150, and unions across quarters to get the full ticker superset needed for the options pull. |
+| `historical_data_pipeline.py` | Turns a raw IvyDB/OptionMetrics export into a per-(ticker, date, expiry) ATM straddle table with call and put IVs. Caches to `data/atm_straddles.csv` and only rebuilds when the source file is newer. |
+
+### Consumers of the (not yet built) correlation time series
+
+| File | What it does |
+|---|---|
+| `signal.py` | Z-scores the implied-minus-realized spread over a rolling window and emits a binary in/out position. |
+| `backtest.py` | Variance-notional P&L approximation with a flat transaction-cost charge. **Not** real option position P&L — see the module docstring. |
+
+## Data files
+
+None of these are in the repo. Three come from WRDS and can't be redistributed;
+one is generated automatically.
+
+| Path | Source | Read by |
+|---|---|---|
+| `data/spy_weights.csv` | Auto-generated by `fetch_spy_weights.py` from SSGA | `config.py` |
+| `data/Historical_SPY_Components.csv` | WRDS/CRSP daily S&P 500 constituents. Needs `PERMNO`, `Ticker`, `DlyCalDt`, `DlyCap` | `build_basket_universe.py` |
+| `data/options_historical_data_full.csv` | WRDS/IvyDB (OptionMetrics). Needs `optionid`, `secid`, `ticker`, `date`, `exdate`, `cp_flag`, `strike_price`, `best_bid`, `best_offer`, `delta`, `impl_volatility` | `historical_data_pipeline.py` |
+| `data/atm_straddles.csv` | Cached output of `historical_data_pipeline.py` | (nothing yet — see gap below) |
+
+`build_basket_universe.py` currently writes `superset_tickers.csv` to the repo
+root rather than into `data/`. Minor, but worth making consistent.
 
 ## Setup
 
-```
+```bash
 pip install -r requirements.txt
+mkdir -p data
+python fetch_spy_weights.py --top 150   # required before the first main.py run
 python main.py
 ```
 
-Requires outbound internet access to Yahoo Finance. `main.py` fetches
-live data, it does not include historical options data, see below.
+The explicit `fetch_spy_weights.py` call is not optional on a fresh clone.
+`main.py` calls `import config` *before* it calls `refresh_weights_if_stale()`,
+and `config.py` raises `FileNotFoundError` at import time when
+`data/spy_weights.csv` is missing — so a clean checkout fails on
+`python main.py` alone. Moving the refresh call above the `import config` line
+(or making `config.py` lazy-load its weights) fixes this and lets the setup
+collapse back to two commands.
 
-Requires to update the config.py's ticker information:
-1. update the list of tickers
-2. update the list of weights for tickers in spy_weights.csv
+Note also that `fetch_spy_weights.py`'s CLI defaults to `--top 50` while
+`config.NUM_COMPONENTS` is 150, so passing `--top 150` explicitly is what keeps
+a manual run in sync with what `main.py` rebuilds later.
 
+Track A needs outbound access to Yahoo Finance and State Street, and behaves
+best during US market hours. With 150 components and a 0.3s sleep per ticker,
+a full run takes roughly a minute of wall clock just in fetching.
 
-## What this gives you, and what it doesn't
+## Current status
 
-Running `main.py` gets you one live data point: today's implied
-correlation vs. today's realized correlation. That's enough to sanity
-check that the pipeline works end to end.
+**Working:** the live snapshot path end to end. Both self-tests pass
+(`black_scholes.py` round-trips a known vol; `correlation.py` recovers a known
+ρ from synthetic data). Weights refresh themselves. The historical straddle
+extraction runs and caches.
 
-It does not give you a backtest. For that you need implied correlation
-computed at many points in history, which means historical options
-chain data, not just the live snapshot yfinance provides by default.
-This is the first real design decision to make as a team: find a
-historical options data source (several exist, most free ones are
-limited in depth or history) and adapt `data_pipeline.py` to pull from
-it. -> waiting for WRDS access
+**The gap:** nothing imports `historical_data_pipeline`, and nothing produces
+the implied and realized correlation *series* that `signal.py` and
+`backtest.py` take as input. `atm_straddles.csv` is built and then goes
+nowhere. That missing glue script is the next real piece of work.
 
-## Known simplifications, and where to go deeper
+Concretely, it needs to, for each historical date:
 
-- **Single average correlation assumption.** The math assumes one
-  correlation number applies uniformly across every pair of components.
-  This is standard practice in dispersion trading and in index
-  providers' own implied correlation indices.
-- **ATM options only.** Real dispersion desks think about the whole
-  skew, not just one strike. Extending to a skew-aware version (e.g.
-  variance swap replication using a strip of strikes) is a legitimate
-  "further work" extension once the ATM version works.
-- **Backtest is a notional-scaled approximation**, not real option
-  position P&L. See the docstring in `backtest.py` for the honest scope
-  of what it captures. Building out real position-level tracking (entry
-  Greeks, rolling positions at expiry, assignment handling) is where
-  most of the remaining project's difficulty lives.
-- **Constant risk-free rate.** Fine for now, a more careful version
-  pulls a maturity-matched Treasury yield per expiry.
-- **Basket of 10 names, not full replication.** Same simplification
-  real dispersion desks make when full index replication isn't
-  practical. Worth stating explicitly rather than treating it as a
-  shortcut you took to save time.
+1. Pick the expiry falling in the 25–45 day window (`config.MIN/MAX_DAYS_TO_EXPIRY`).
+2. Collapse each ticker's call and put IV into a single ATM vol.
+3. Split out SPY's own IV from the component IVs.
+4. Attach that quarter's weights, drop tickers with no usable quote, renormalize the remainder to 1.
+5. Call `implied_correlation()`, and `realized_correlation()` on a trailing 30-day return window.
 
-## Suggested build order
+Steps 3–5 are exactly what `main.py` already does for a single date, so the
+cleanest approach is probably to factor that block out of `main.py` into a
+shared function both entry points call, rather than writing it twice.
 
-1. Get `main.py` running end to end locally with live data.
-2. Sanity check the implied correlation number against public sources
-   (CBOE publishes an implied correlation index you can compare
-   against directionally, not exactly, since methodology differs).
-3. Source historical options data and extend the pipeline to compute
-   implied correlation across a real date range.
-4. Build out the signal and backtest against that historical series.
-5. Only after 1 to 4 work: consider extending the backtest toward real
-   position-level P&L tracking if you have time left.
+**One methodological trap in that work:** `config.COMPONENT_WEIGHTS` holds
+*today's* SPY weights. Using them to backtest 2015 imports both look-ahead bias
+and survivorship bias — NVDA was not a top-10 name in 2015, and names that fell
+out of the index disappear entirely. `build_basket_universe.py` already ranks
+by market cap per quarter, so the point-in-time weights are recoverable from
+`DlyCap`; it just doesn't emit them yet, only the ticker superset. Worth
+extending it to write a quarter-by-quarter weights table.
+
+## Known simplifications
+
+- **Single average correlation.** Standard practice; see the note above.
+- **ATM options only.** Real dispersion desks trade the whole skew. A
+  skew-aware version (variance-swap replication across a strip of strikes) is
+  the natural extension once the ATM version works.
+- **Backtest is a notional-scaled approximation.** It doesn't hold actual
+  option positions, roll at expiry, or model assignment, margin, or bid-ask.
+  Real position-level tracking is where most of the remaining difficulty lives.
+- **Constant risk-free rate** (`RISK_FREE_RATE = 0.045`) rather than a
+  maturity-matched Treasury yield per expiry.
+- **150 names, not full replication.** Same simplification real desks make when
+  full index replication isn't practical. Coverage is exposed as
+  `config.BASKET_COVERAGE`; the renormalization in `main.py` keeps the math
+  correct at any coverage level, but higher coverage means the basket is a
+  closer proxy for the index. The original 10-name basket produced ρ = 1.25,
+  which is what motivated the move to 150.
+- **SPY, not SPX.** SPX options are cash-settled index options and harder to
+  source freely. SPY is the liquid accessible proxy.
+
+## Build order
+
+1. ~~Get `main.py` running end to end on live data.~~ Done.
+2. Sanity check the live implied correlation against CBOE's published implied
+   correlation index — directionally, not exactly, since methodology differs.
+3. ~~Source historical options data.~~ Done (WRDS).
+4. **← current step.** Write the glue that turns `atm_straddles.csv` into
+   implied and realized correlation series, with point-in-time weights.
+5. Run `signal.py` and `backtest.py` against that series and actually tune the
+   thresholds, which are still placeholders.
+6. Only after 1–5: extend the backtest toward real position-level P&L.
