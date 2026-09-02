@@ -140,7 +140,7 @@ and survivorship bias — NVDA was not a top-10 name in 2015, and names that fel
 out of the index disappear entirely. `build_basket_universe.py` already ranks
 by market cap per quarter, so the point-in-time weights are recoverable from
 `DlyCap`; it just doesn't emit them yet, only the ticker superset. Worth
-extending it to write a quarter-by-quarter weights table.
+extending it to write a quarter-by-quarter weights table. (Done)
 
 ## Known simplifications
 
