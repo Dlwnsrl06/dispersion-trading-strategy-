@@ -47,6 +47,24 @@ def get_superset_tickers(top_n_by_quarter: pd.DataFrame) -> list:
     """
     return sorted(top_n_by_quarter["Ticker"].dropna().unique().tolist())
 
+def compute_quarterly_weights(top_n_by_quarter: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each quarter, computes each ticker's weight as its share of
+    total market cap among that quarter's top-N basket. This gives
+    point-in-time weights, avoiding the look-ahead bias of applying
+    today's SPY weights to a historical backtest.
+    """
+    df = top_n_by_quarter.copy()
+
+    # Reconstruct quarter from DlyCalDt since it's not already present
+    df["quarter"] = df["DlyCalDt"].dt.to_period("Q")
+
+    quarter_totals = df.groupby("quarter")["DlyCap"].transform("sum")
+    df["weight"] = df["DlyCap"] / quarter_totals
+
+    return df[["quarter", "Ticker", "DlyCap", "weight"]].rename(
+        columns={"Ticker": "ticker"}
+    )
 
 if __name__ == "__main__":
     INPUT_FILE = "data/Historical_SPY_Components.csv"
@@ -58,23 +76,15 @@ if __name__ == "__main__":
     print(f"Total unique tickers across all quarters: {len(superset_tickers)}")
 
     pd.Series(superset_tickers, name="ticker").to_csv(
-        "superset_tickers.csv", index=False
+        "data/superset_tickers.csv", index=False
     )
 
-    # --- new check below ---
-    candidates = [
-        'APP', 'BNY', 'BRK-B', 'CMI', 'DDOG', 'DELL', 'GLW', 'HOOD',
-        'MRSH', 'MRVL', 'PWR', 'SNDK', 'STX', 'VRT', 'WDC'
-    ]
-    candidates_normalized = [t.replace('-', '') for t in candidates]
+    # NEW: point-in-time quarterly weights table
+    quarterly_weights = compute_quarterly_weights(top150_by_qtr)
+    quarterly_weights.to_csv("data/quarterly_weights.csv", index=False)
+    print(f"Saved {len(quarterly_weights):,} quarter-ticker weight rows to data/quarterly_weights.csv")
 
-    for original, normalized in zip(candidates, candidates_normalized):
-        matches = top150_by_qtr[top150_by_qtr["Ticker"] == normalized]
-        if matches.empty:
-            matches = top150_by_qtr[top150_by_qtr["Ticker"] == original]
-
-        if matches.empty:
-            print(f"{original:8s} -> NOT in top150 at any point 2015-2025 (skip)")
-        else:
-            quarters = sorted(matches["quarter"].astype(str).unique())
-            print(f"{original:8s} -> IN top150 during: {quarters}")
+    # sanity check: weights within each quarter should sum to ~1.0
+    check = quarterly_weights.groupby("quarter")["weight"].sum()
+    print(f"\nWeight sum sanity check (should all be ~1.0):")
+    print(check.describe())
