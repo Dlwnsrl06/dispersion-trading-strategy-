@@ -14,9 +14,9 @@ Correlation Risk: Evidence from Equity Options." *Journal of Finance*, 64(3),
 Index variance is not just the weighted sum of component variances — it depends
 on how the components co-move:
 
-```
+$$
 Var(index) = Σ wᵢ² σᵢ²  +  ρ · [ (Σ wᵢ σᵢ)² − Σ wᵢ² σᵢ² ]
-```
+$$
 
 Given an observed index IV and observed component IVs, everything in that
 identity is known except `ρ`, so it can be solved for directly. That number is
