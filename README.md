@@ -162,42 +162,17 @@ For each historical date, the glue script:
    using actual historical close/spot prices.
 6. Repeat across every available date to build the full time series.
 
-Steps 3–5 mirror what `main.py` already does for one live date, so the cleanest
-approach is still to factor that logic out into a shared function used by both
-the live and historical paths.
+Steps 3–5 are exactly what `main.py` already does for a single date, so the
+cleanest approach is probably to factor that block out of `main.py` into a
+shared function both entry points call, rather than writing it twice.
 
-One open data decision remains before the real historical run: realized
-correlation still needs a historical spot/close price source. The script
-accepts a local wide close file or a long `date,ticker,close` file via
-`--price-path`; it can also use `--download-prices` as a temporary yfinance
-approximation. A WRDS/CRSP `secprd` close pull is still the cleaner input.
-
-One open IV decision also remains: the historical path can either compute IVs
-with `black_scholes.py`'s Newton-Raphson solver, which requires spot prices, or
-use OptionMetrics' `impl_volatility` column already present in
-`atm_straddles.csv`. Using `impl_volatility` avoids another WRDS pull for this
-leg but means the historical options pipeline does not exercise the project's
-own IV solver.
-
-## Historical run flow
-
-```bash
-python historical_correlation_series.py --price-path data/historical_closes.csv
-python signal.py
-python backtest.py
-```
-
-For temporary development without a WRDS close file:
-
-```bash
-python historical_correlation_series.py --download-prices
-```
-
-Tune signal parameters without editing source:
-
-```bash
-python signal.py --zscore-window 60 --entry-z 1.0 --exit-z 0.0
-```
+**One methodological trap in that work:** `config.COMPONENT_WEIGHTS` holds
+*today's* SPY weights. Using them to backtest 2015 imports both look-ahead bias
+and survivorship bias — NVDA was not a top-10 name in 2015, and names that fell
+out of the index disappear entirely. `build_basket_universe.py` already ranks
+by market cap per quarter, so the point-in-time weights are recoverable from
+`DlyCap`; it just doesn't emit them yet, only the ticker superset. Worth
+extending it to write a quarter-by-quarter weights table.
 
 ## Known simplifications
 
