@@ -47,11 +47,6 @@ def get_expiry_in_range(ticker_obj, min_days, max_days):
 
 
 def get_atm_option(ticker_symbol, min_days, max_days, option_type="call", target_expiry=None):
-    """
-    Fetches the near-the-money option for a single ticker at a matching
-    expiry. Returns a dict with the fields needed for IV extraction, or
-    raises a ValueError if no suitable contract is found.
-    """
     ticker_obj = yf.Ticker(ticker_symbol)
 
     spot_history = ticker_obj.history(period="1d")
@@ -82,16 +77,34 @@ def get_atm_option(ticker_symbol, min_days, max_days, option_type="call", target
     options_df["strike_diff"] = (options_df["strike"] - spot).abs()
     candidates = options_df.sort_values("strike_diff")
 
+    T = days_out / 365
+    r = config.RISK_FREE_RATE
+
+    def is_arbitrage_valid(strike, price):
+        """
+        Rejects quotes that violate the no-arbitrage price floor, since
+        no volatility can reproduce a price below intrinsic value,
+        this catches stale lastPrice quotes before they crash the solver.
+        """
+        if option_type == "call":
+            floor = max(spot - strike * np.exp(-r * T), 0.0)
+        else:
+            floor = max(strike * np.exp(-r * T) - spot, 0.0)
+        return price >= floor
+
     atm_row = None
     used_last_price = False
     for _, row in candidates.iterrows():
         if row["bid"] > 0 and row["ask"] > 0 and row["ask"] >= row["bid"]:
-            atm_row = row
-            break
+            mid = (row["bid"] + row["ask"]) / 2
+            if is_arbitrage_valid(row["strike"], mid):
+                atm_row = row
+                break
 
     if atm_row is None:
         for _, row in candidates.iterrows():
-            if row.get("lastPrice", 0) > 0:
+            last_price = row.get("lastPrice", 0)
+            if last_price > 0 and is_arbitrage_valid(row["strike"], last_price):
                 atm_row = row
                 used_last_price = True
                 break
@@ -99,8 +112,8 @@ def get_atm_option(ticker_symbol, min_days, max_days, option_type="call", target
     if atm_row is None:
         raise ValueError(
             f"No usable quote found for {ticker_symbol} at {expiry_str}, "
-            f"checked {len(candidates)} strikes, all had zero, missing "
-            f"or crossed bid/ask."
+            f"checked {len(candidates)} strikes, all had zero, missing, "
+            f"crossed, or arbitrage-violating bid/ask/lastPrice."
         )
 
     if used_last_price:
@@ -108,14 +121,13 @@ def get_atm_option(ticker_symbol, min_days, max_days, option_type="call", target
     else:
         mid_price = (atm_row["bid"] + atm_row["ask"]) / 2
 
-
     return {
         "ticker": ticker_symbol,
         "spot": spot,
         "strike": atm_row["strike"],
         "expiry": expiry_str,
         "days_to_expiry": days_out,
-        "time_to_expiry_years": days_out / 365,
+        "time_to_expiry_years": T,
         "mid_price": mid_price,
         "bid": atm_row["bid"],
         "ask": atm_row["ask"],

@@ -12,8 +12,11 @@ import pandas as pd
 
 import config
 
+DEFAULT_INPUT_PATH = "data/correlation_history.csv"
+DEFAULT_OUTPUT_PATH = "data/signal_history.csv"
 
-def compute_spread_series(implied_corr_series, realized_corr_series):
+
+def compute_spread_series(implied_corr_series, realized_corr_series, zscore_window=None):
     """
     Both inputs are pandas Series indexed by date. Returns a DataFrame
     with the spread and its rolling z-score.
@@ -29,8 +32,12 @@ def compute_spread_series(implied_corr_series, realized_corr_series):
 
     df["spread"] = df["implied"] - df["realized"]
 
-    rolling_mean = df["spread"].rolling(config.SIGNAL_ZSCORE_WINDOW).mean()
-    rolling_std = df["spread"].rolling(config.SIGNAL_ZSCORE_WINDOW).std()
+    zscore_window = (
+        config.SIGNAL_ZSCORE_WINDOW if zscore_window is None else zscore_window
+    )
+
+    rolling_mean = df["spread"].rolling(zscore_window).mean()
+    rolling_std = df["spread"].rolling(zscore_window).std()
 
     df["zscore"] = (df["spread"] - rolling_mean) / rolling_std
 
@@ -69,3 +76,69 @@ def generate_positions(spread_df, entry_z=None, exit_z=None):
     spread_df = spread_df.copy()
     spread_df["position"] = positions
     return spread_df
+
+
+def build_signal_table(
+    correlation_history,
+    entry_z=None,
+    exit_z=None,
+    zscore_window=None,
+):
+    """
+    Takes the output of historical_correlation_series.py and adds
+    spread, z-score, and position columns.
+    """
+    df = correlation_history.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date").sort_index()
+
+    spread_df = compute_spread_series(
+        df["implied_correlation"],
+        df["realized_correlation"],
+        zscore_window=zscore_window,
+    )
+    signal_df = generate_positions(spread_df, entry_z=entry_z, exit_z=exit_z)
+
+    passthrough_cols = [
+        col
+        for col in [
+            "quarter",
+            "num_components",
+            "raw_weight_coverage",
+            "index_iv",
+            "out_of_bounds",
+        ]
+        if col in df.columns
+    ]
+    return df[passthrough_cols].join(signal_df, how="right")
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Generate z-score dispersion signals from correlation history."
+    )
+    parser.add_argument("--input-path", default=DEFAULT_INPUT_PATH)
+    parser.add_argument("--output-path", default=DEFAULT_OUTPUT_PATH)
+    parser.add_argument("--entry-z", type=float, default=None)
+    parser.add_argument("--exit-z", type=float, default=None)
+    parser.add_argument("--zscore-window", type=int, default=None)
+    args = parser.parse_args()
+
+    correlation_history = pd.read_csv(args.input_path)
+    signal_df = build_signal_table(
+        correlation_history,
+        entry_z=args.entry_z,
+        exit_z=args.exit_z,
+        zscore_window=args.zscore_window,
+    )
+    signal_df.to_csv(args.output_path, index_label="date")
+
+    print(f"Saved {len(signal_df):,} signal rows to {args.output_path}")
+    if not signal_df.empty:
+        print(signal_df.tail().to_string())
+
+
+if __name__ == "__main__":
+    main()
