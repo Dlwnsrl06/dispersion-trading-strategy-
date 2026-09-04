@@ -31,7 +31,17 @@ DEFAULT_STRADDLES_PATH = "data/atm_straddles.csv"
 DEFAULT_WEIGHTS_PATH = "data/quarterly_weights.csv"
 DEFAULT_OUTPUT_PATH = "data/correlation_history.csv"
 DEFAULT_PRICE_CACHE_PATH = "data/historical_closes_yfinance.csv"
-
+TICKER_ALIASES = {
+    "META": "FB",
+    "ELV": "ANTM",
+    "BKNG": "PCLN",
+    "FISV": "FI",     # only one that flips direction
+    "RTX": "UTX",      # UTX is the continuing entity post-merger; RTN
+                        # correctly delists on 2020-04-02, no alias needed
+    "DD": "DWDP",      # only affects post-2019 DD rows; pre-2017 DD rows
+                        # have no options coverage under any label and
+                        # will (correctly) still drop
+}
 
 def _resolve_path(path):
     if os.path.isabs(path):
@@ -82,6 +92,12 @@ def load_quarterly_weights(path=DEFAULT_WEIGHTS_PATH):
     )
     weights = weights.dropna(subset=["quarter", "ticker", "weight"])
     weights = weights[weights["weight"] > 0]
+
+    weights["ticker"] = weights["ticker"].replace(TICKER_ALIASES)
+    weights = (
+        weights.groupby(["quarter", "ticker"], as_index=False)["weight"].sum()
+    )
+
     return weights
 
 
@@ -241,7 +257,16 @@ def build_yfinance_price_cache(
 
 
 def _quarter_for_date(date):
-    return str(pd.Timestamp(date).to_period("Q"))
+    """
+    Returns the PRIOR calendar quarter's weight vector for `date`.
+    quarterly_weights.csv's DlyCap is measured on the last trading day of
+    the quarter it's labeled with, so using that label's own quarter to
+    weight trading days would use end-of-quarter market cap to trade days
+    before that cap was observable. Shifting forward by one period makes
+    each weight vector apply only to dates after its snapshot date.
+    """
+    period = pd.Timestamp(date).to_period("Q") - 1
+    return str(period)
 
 
 def _valid_price_window(price_history, date, tickers, lookback_days):
@@ -373,6 +398,7 @@ def build_correlation_history(
 
 
 def main():
+    
     parser = argparse.ArgumentParser(
         description="Build historical implied/realized correlation series."
     )
