@@ -180,6 +180,24 @@ extending it to write a quarter-by-quarter weights table.
 - **ATM options only.** Real dispersion desks trade the whole skew. A
   skew-aware version (variance-swap replication across a strip of strikes) is
   the natural extension once the ATM version works.
+- **Options data has a fixed DTE window from the source extraction.**
+  `options_historical_data_full.csv` was pulled from WRDS with a 20-40 day
+  days-to-expiry filter applied at extraction time, so `atm_straddles.csv`
+  only ever contains DTE values between 21 and 39. Widening
+  `config.MIN_DAYS_TO_EXPIRY`/`MAX_DAYS_TO_EXPIRY` beyond that range has no
+  effect, since there's no data outside it to select from. Because
+  monthly-only equity option expiries are spaced roughly 28-35 calendar days
+  apart, wider than this 18-day window, names without weekly listings
+  periodically have zero contracts available for a stretch of each monthly
+  cycle. This shows up as `num_components` cycling between roughly 110 and
+  143 (out of a 150-name basket) on a regular monthly rhythm throughout the
+  full 2015-2025 sample. It's a structural property of the source data, not
+  a code bug: coverage never drops below the `min_components=50` floor, so
+  no dates are lost, and the effect is quantified and consistent rather than
+  random. Closing it fully would require re-extracting
+  `options_historical_data_full.csv` from WRDS with a wider DTE window
+  (something like 15-55), which wasn't done here given the scope of the
+  project; it's a natural next step if the data pipeline is revisited.
 - **Backtest is a notional-scaled approximation.** It doesn't hold actual
   option positions, roll at expiry, or model assignment, margin, or bid-ask.
   Real position-level tracking is where most of the remaining difficulty lives.
