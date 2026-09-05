@@ -58,8 +58,8 @@ RISK_FREE_RATE = 0.045
 
 # How far out to look for expiries, in days. Options dispersion trades
 # are typically done on monthly expiries around 30-60 days out.
-MIN_DAYS_TO_EXPIRY = 25
-MAX_DAYS_TO_EXPIRY = 45
+MIN_DAYS_TO_EXPIRY = 15
+MAX_DAYS_TO_EXPIRY = 50
 
 # Lookback window (trading days) for realized correlation and realized
 # volatility calculations.
